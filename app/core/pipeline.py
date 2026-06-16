@@ -15,6 +15,7 @@ from app.detect import audio_loudness, scene_scoring
 from app.llm.client_scorer import ClientSubmittedScorer
 from app.llm.interface import SceneScorer
 from app.media import ffmpeg_io
+from app.media.probe import has_audio_stream
 
 
 def run(
@@ -37,6 +38,11 @@ def run(
     work = settings.work_dir / job_id
     try:
         store.set_status(job_id, JobStatus.EXTRACTING, 10)
+        if not has_audio_stream(source):
+            raise RuntimeError(
+                "This video has no audio track. Highlight detection listens for the "
+                "loudest moments, so it needs a recording with game or mic audio."
+            )
         candidates = audio_loudness.detect(source, work, settings)
         store.set_status(job_id, JobStatus.DETECTING, 40)
         if not candidates:

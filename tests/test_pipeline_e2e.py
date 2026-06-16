@@ -1,14 +1,16 @@
 """End-to-end pipeline test against a synthetic clip (skips without ffmpeg)."""
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
+import pytest
 
 from app.config import Settings
 from app.core.jobs import Job, JobStatus, JobStore, Tier
 from app.core.pipeline import run as run_pipeline
 from app.llm.fake_scorer import FakeScorer
-from app.media.probe import probe_duration
+from app.media.probe import ffmpeg_available, probe_duration
 
 
 def _run(settings: Settings, source: Path, tier: Tier, **kwargs) -> Job:
@@ -40,3 +42,20 @@ def test_ai_tier_end_to_end_with_stub(settings: Settings, sample_video: Path):
     montage = settings.outputs_dir / "testjob" / "montage.mp4"
     assert montage.exists() and montage.stat().st_size > 0
     assert probe_duration(montage) > 0
+
+
+def test_video_without_audio_fails_clearly(settings: Settings, tmp_path: Path):
+    if not ffmpeg_available():
+        pytest.skip("ffmpeg not installed")
+
+    # A video-only clip (no audio stream), like many screen recordings.
+    silent = tmp_path / "silent.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x180:d=5",
+         "-c:v", "libx264", "-pix_fmt", "yuv420p", str(silent)],
+        capture_output=True, text=True, check=True,
+    )
+
+    job = _run(settings, silent, Tier.FREE)
+    assert job.status == JobStatus.FAILED
+    assert "no audio" in (job.error or "").lower()

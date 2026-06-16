@@ -42,3 +42,26 @@ def probe_duration(source: Path) -> float:
         return float(data["format"]["duration"])
     except (KeyError, TypeError, ValueError):
         return 0.0
+
+
+def has_audio_stream(source: Path) -> bool:
+    """Return True if the file contains at least one audio stream.
+
+    Loudness detection needs audio; many screen recordings are video-only, so we
+    check up front to give a clear message instead of an ffmpeg crash.
+    """
+    ffprobe = _require_ffprobe()
+    proc = subprocess.run(
+        [
+            ffprobe,
+            "-v", "error",
+            "-select_streams", "a",          # audio streams only
+            "-show_entries", "stream=index",
+            "-of", "csv=p=0",
+            str(source),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    return bool(proc.stdout.strip())
+
