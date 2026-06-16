@@ -1,0 +1,66 @@
+name: Live demo (Cloudflare tunnel)
+
+# Ephemeral demo only. GitHub Actions runners are not hosting — this job keeps the
+# app reachable on a public *.trycloudflare.com URL until it ends (max ~6h, and the
+# URL dies with it). Trigger it manually from the Actions tab.
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "How long to keep the demo alive (minutes, max 330)"
+        default: "60"
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Install app
+        run: pip install .
+
+      - name: Install cloudflared
+        run: |
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared-linux-amd64.deb
+
+      - name: Start the app
+        run: |
+          nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/healthz >/dev/null && break
+            sleep 1
+          done
+          curl -s http://localhost:8000/healthz || (echo "App failed to start"; cat uvicorn.log; exit 1)
+
+      - name: Open tunnel and print URL
+        run: |
+          nohup cloudflared tunnel --no-autoupdate --url http://localhost:8000 > cloudflared.log 2>&1 &
+          url=""
+          for i in $(seq 1 30); do
+            url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared.log | head -1 || true)
+            [ -n "$url" ] && break
+            sleep 2
+          done
+          if [ -z "$url" ]; then echo "Could not find tunnel URL"; cat cloudflared.log; exit 1; fi
+          echo "## 🎮 Montage Clipper — live demo" >> "$GITHUB_STEP_SUMMARY"
+          echo "**$url**" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Ephemeral — this link stops working when the job ends." >> "$GITHUB_STEP_SUMMARY"
+          echo "Demo is live at: $url"
+
+      - name: Keep alive
+        run: |
+          mins="${{ github.event.inputs.minutes }}"
+          [ "$mins" -gt 330 ] 2>/dev/null && mins=330
+          echo "Holding the demo open for ${mins} minute(s)…"
+          sleep $(( mins * 60 ))

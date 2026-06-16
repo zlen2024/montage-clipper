@@ -1,0 +1,19 @@
+# Render blueprint — free, always-on(ish) Docker hosting.
+# Either connect this repo as a Blueprint in the Render dashboard (native
+# auto-deploy on push), or use the deploy hook from .github/workflows/deploy-render.yml.
+#
+# Note: the free plan spins the service down after ~15 min idle and cold-starts on
+# the next request. Storage is ephemeral, which is fine here — jobs are short-lived.
+services:
+  - type: web
+    name: montage-clipper
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: STORAGE_DIR
+        value: /tmp/montage
+      - key: RETENTION_HOURS
+        value: "6"

@@ -1,0 +1,43 @@
+name: Test & deploy to Render
+
+# Runs the test suite, then (only if it passes) triggers a Render deploy via a
+# deploy hook. If the RENDER_DEPLOY_HOOK_URL secret isn't set, the deploy step is
+# skipped gracefully so the workflow still goes green.
+
+on:
+  push:
+    branches:
+      - main
+      - claude/gameplay-montage-app-5ugsok
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Install app (with dev deps)
+        run: pip install ".[dev]"
+      - name: Run tests
+        run: pytest -q
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL is not set — skipping deploy."
+            echo "See HOSTING.md to enable auto-deploy." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          curl -fsSL -X POST "$HOOK"
+          echo "Triggered Render deploy." >> "$GITHUB_STEP_SUMMARY"
