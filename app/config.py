@@ -40,8 +40,9 @@ class Settings(BaseSettings):
     candidate_overshoot: int = 3   # keep target_segments * this many candidates
 
     # --- AI tier (browser WebGPU) ---
-    # CLIP zero-shot classifier run client-side; scores "action vs idle" per frame.
-    vlm_model_id: str = "Xenova/clip-vit-base-patch32"
+    # Small vision-language model run client-side; answers "is this combat?" per
+    # highlight frame. 256M is fast; SmolVLM-500M-Instruct is more accurate.
+    vlm_model_id: str = "HuggingFaceTB/SmolVLM-256M-Instruct"
     frame_fps: float = 1.0             # frames sampled per second within a segment
     frame_scale_width: int = 512       # downscale long edge to control client cost
     max_frames_per_segment: int = 6

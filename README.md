@@ -16,13 +16,14 @@ Two detection tiers (also the monetization seam):
   reacting) is almost always the loudest part. We compute a smoothed energy envelope,
   pick prominent peaks, pad/merge them into segments, cap the total length, and stitch
   with ffmpeg. Game-agnostic, CPU-only, free to run.
-- **Paid/credit — AI scene scoring, in your browser.** Frames around the audio
-  candidates are scored by an open-weights **CLIP** model (zero-shot
-  image classification) running **client-side via WebGPU** — on the user's GPU, so
-  there's **no cloud inference cost**. CLIP rates each frame "intense action vs.
-  idle/menu", and that probability becomes the epicness score. The server only
-  coordinates and renders. The `SceneScorer` seam leaves a cloud path (e.g. Claude
-  vision) as a future drop-in.
+- **Paid/credit — AI scene scoring, in your browser.** For each audio-detected
+  highlight, its middle frame is shown to a small open-weights **vision-language
+  model** (SmolVLM) running **client-side via WebGPU** — on the user's GPU, so
+  there's **no cloud inference cost**. The model is asked a direct yes/no question
+  ("is there active combat / a kill in this frame?") and the answer becomes the
+  epicness score. Only one frame per candidate is scored, so it stays fast. The
+  server only coordinates and renders. The `SceneScorer` seam leaves a cloud path
+  (e.g. Claude vision) as a future drop-in.
 
 ## Requirements
 
