@@ -17,10 +17,12 @@ Two detection tiers (also the monetization seam):
   pick prominent peaks, pad/merge them into segments, cap the total length, and stitch
   with ffmpeg. Game-agnostic, CPU-only, free to run.
 - **Paid/credit — AI scene scoring, in your browser.** Frames around the audio
-  candidates are scored by an open-weights vision-language model
-  (`SmolVLM-500M-Instruct`) running **client-side via WebGPU** — on the user's GPU, so
-  there's **no cloud inference cost**. The server only coordinates and renders. The
-  `SceneScorer` seam leaves a cloud path (e.g. Claude vision) as a future drop-in.
+  candidates are scored by an open-weights **CLIP** model (zero-shot
+  image classification) running **client-side via WebGPU** — on the user's GPU, so
+  there's **no cloud inference cost**. CLIP rates each frame "intense action vs.
+  idle/menu", and that probability becomes the epicness score. The server only
+  coordinates and renders. The `SceneScorer` seam leaves a cloud path (e.g. Claude
+  vision) as a future drop-in.
 
 ## Requirements
 
