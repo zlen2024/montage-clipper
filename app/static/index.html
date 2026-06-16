@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Montage Clipper — auto gameplay highlights</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: system-ui, sans-serif; max-width: 680px; margin: 2rem auto; padding: 0 1rem;
+           background: #14151a; color: #e6e6ea; }
+    h1 { font-size: 1.6rem; }
+    .card { background: #1d1f27; border: 1px solid #2c2f3a; border-radius: 12px; padding: 1.25rem; margin: 1rem 0; }
+    label { display: block; margin: 0.5rem 0 0.25rem; font-weight: 600; }
+    input[type=file] { width: 100%; }
+    .tier { display: flex; gap: 1rem; margin: 0.5rem 0; }
+    .tier label { font-weight: 400; }
+    button { background: #5b6cff; color: white; border: 0; border-radius: 8px; padding: 0.6rem 1.1rem;
+             font-size: 1rem; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    progress { width: 100%; height: 1rem; }
+    .muted { color: #9aa0b4; font-size: 0.9rem; }
+    .status { font-weight: 600; }
+    a.download { display: inline-block; margin-top: 0.75rem; }
+    .warn { color: #ffcf6b; }
+  </style>
+</head>
+<body>
+  <h1>🎮 Montage Clipper</h1>
+  <p class="muted">Upload a gameplay recording (up to ~1 hour). We trim it down to the epic moments
+    so you don't have to scrub the whole thing.</p>
+
+  <div class="card">
+    <label for="file">Gameplay video</label>
+    <input type="file" id="file" accept="video/*" />
+
+    <label>Detection mode</label>
+    <div class="tier">
+      <label><input type="radio" name="tier" value="free" checked /> Free — loudest moments (audio)</label>
+      <label><input type="radio" name="tier" value="ai" id="aiTier" /> AI — smarter scene scoring (runs on your GPU)</label>
+    </div>
+    <p class="muted" id="aiNote"></p>
+
+    <button id="go">Make my montage</button>
+  </div>
+
+  <div class="card" id="progressCard" style="display:none">
+    <div class="status" id="statusText">Starting…</div>
+    <progress id="bar" max="100" value="0"></progress>
+    <p class="muted" id="detail"></p>
+    <a class="download" id="downloadLink" style="display:none" download>⬇ Download montage</a>
+  </div>
+
+  <script type="module">
+    import { isWebGPUAvailable, scoreJob } from "/static/scorer.js";
+
+    const $ = (id) => document.getElementById(id);
+    const webgpu = isWebGPUAvailable();
+
+    // Gate the AI option on WebGPU support.
+    if (!webgpu) {
+      $("aiTier").disabled = true;
+      $("aiNote").innerHTML =
+        '<span class="warn">AI mode needs a WebGPU browser (recent Chrome/Edge). ' +
+        "Falling back to free audio mode.</span>";
+    } else {
+      $("aiNote").textContent =
+        "AI mode loads a small vision model into your browser (one-time download) and scores frames on your GPU.";
+    }
+
+    function selectedTier() {
+      return document.querySelector('input[name=tier]:checked').value;
+    }
+
+    async function poll(jobId, tier) {
+      let scored = false;
+      while (true) {
+        const res = await fetch(`/jobs/${jobId}`);
+        if (!res.ok) throw new Error(`Status check failed (${res.status})`);
+        const job = await res.json();
+
+        $("statusText").textContent = humanStatus(job.status);
+        $("bar").value = job.progress;
+
+        if (job.status === "failed") throw new Error(job.error || "Job failed");
+        if (job.status === "done") {
+          const link = $("downloadLink");
+          link.href = `/jobs/${jobId}/download`;
+          link.style.display = "inline-block";
+          $("detail").textContent = "";
+          return;
+        }
+        if (job.status === "awaiting_client_scoring" && tier === "ai" && !scored) {
+          scored = true;
+          await runClientScoring(jobId);
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+
+    async function runClientScoring(jobId) {
+      $("detail").textContent = "Loading vision model in your browser…";
+      const manifest = await (await fetch(`/jobs/${jobId}/frames`)).json();
+      const scores = await scoreJob(manifest, { onStatus: (s) => ($("detail").textContent = s) });
+      const payload = {};
+      for (const [k, v] of Object.entries(scores)) payload[k] = v;
+      await fetch(`/jobs/${jobId}/scores`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scores: payload }),
+      });
+      $("detail").textContent = "Scores sent. Rendering your montage…";
+    }
+
+    function humanStatus(s) {
+      return {
+        queued: "Queued…",
+        extracting: "Extracting audio…",
+        detecting: "Finding loud moments…",
+        awaiting_client_scoring: "Scoring scenes on your GPU…",
+        rendering: "Rendering montage…",
+        done: "Done!",
+        failed: "Failed",
+      }[s] || s;
+    }
+
+    $("go").addEventListener("click", async () => {
+      const file = $("file").files[0];
+      if (!file) { alert("Pick a video first."); return; }
+
+      let tier = selectedTier();
+      if (tier === "ai" && !webgpu) tier = "free";
+
+      const form = new FormData();
+      form.append("file", file);
+      form.append("tier", tier);
+
+      $("go").disabled = true;
+      $("progressCard").style.display = "block";
+      $("downloadLink").style.display = "none";
+      $("statusText").textContent = "Uploading…";
+
+      try {
+        const res = await fetch("/upload", { method: "POST", body: form });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || `Upload failed (${res.status})`);
+        }
+        const { job_id } = await res.json();
+        await poll(job_id, tier);
+      } catch (e) {
+        $("statusText").textContent = "Error";
+        $("detail").innerHTML = `<span class="warn">${e.message}</span>`;
+      } finally {
+        $("go").disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

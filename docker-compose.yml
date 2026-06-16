@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Override any Settings field here, e.g.:
+      # MAX_MONTAGE_LEN: "60"
+      # VLM_MODEL_ID: "HuggingFaceTB/SmolVLM-500M-Instruct"
+      STORAGE_DIR: /data
+    volumes:
+      - montage_data:/data
+
+volumes:
+  montage_data:
