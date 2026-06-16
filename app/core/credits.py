@@ -34,9 +34,10 @@ class CreditError(Exception):
 class CreditService:
     """Account store + gating logic, persisted to a single JSON file."""
 
-    def __init__(self, path: Path, free_daily_limit: int):
+    def __init__(self, path: Path, free_daily_limit: int, bypass: bool = False):
         self._path = path
         self._free_daily_limit = free_daily_limit
+        self._bypass = bypass
         self._lock = threading.Lock()
         self._accounts: dict[str, Account] = {}
         self._load()
@@ -66,6 +67,8 @@ class CreditService:
 
     def authorize(self, account_id: str, tier: Tier) -> None:
         """Raise `CreditError` if the account may not run `tier`; else consume usage."""
+        if self._bypass:
+            return  # dev mode: skip every check
         with self._lock:
             acct = self._get(account_id)
             if tier == Tier.FREE:

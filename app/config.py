@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     # --- Free-tier usage cap ---
     free_daily_limit: int = 5
 
+    # --- Dev override ---
+    # When true, the AI tier is allowed without credits and the daily free limit
+    # is ignored. Use only for local testing — set BYPASS_CREDITS=true.
+    bypass_credits: bool = False
+
     # --- Derived paths ---
     @property
     def uploads_dir(self) -> Path:

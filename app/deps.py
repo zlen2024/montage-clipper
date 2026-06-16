@@ -23,4 +23,8 @@ def get_store() -> JobStore:
 def get_credits() -> CreditService:
     settings: Settings = get_settings()
     settings.ensure_dirs()
-    return CreditService(settings.storage_dir / "accounts.json", settings.free_daily_limit)
+    return CreditService(
+        settings.storage_dir / "accounts.json",
+        settings.free_daily_limit,
+        bypass=settings.bypass_credits,
+    )
