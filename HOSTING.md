@@ -12,6 +12,37 @@ rendering are not.)
 
 ---
 
+## 0. Run the prebuilt image with Docker (GHCR)
+
+Workflow `.github/workflows/publish-image.yml` builds the Dockerfile and pushes it to
+the GitHub Container Registry on every push — using the built-in `GITHUB_TOKEN`, no
+secrets to set up. After the first run, the image is at
+`ghcr.io/zlen2024/montage-clipper`.
+
+```bash
+docker run --rm -p 8000:8000 ghcr.io/zlen2024/montage-clipper:latest
+# then open http://localhost:8000
+```
+
+Tags published: `latest`, the short commit SHA (e.g. `:0a7af64`), the branch name, and
+`vX.Y.Z` for any `v*` git tag.
+
+**Pulling:** GHCR packages start **private**. Either:
+- make it public once — GitHub → repo **Packages** → the package → **Package settings →
+  Change visibility → Public** (then the `docker run` above just works), or
+- authenticate first with a Personal Access Token that has `read:packages`:
+  ```bash
+  echo "$GHCR_TOKEN" | docker login ghcr.io -u zlen2024 --password-stdin
+  ```
+
+**Keep outputs across restarts (optional):**
+```bash
+docker run --rm -p 8000:8000 -v montage_data:/app/storage \
+  ghcr.io/zlen2024/montage-clipper:latest
+```
+
+---
+
 ## 1. Temporary live demo (Cloudflare tunnel)
 
 Workflow: `.github/workflows/demo-tunnel.yml` (manual trigger).

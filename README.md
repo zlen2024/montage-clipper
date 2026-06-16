@@ -39,6 +39,18 @@ uvicorn app.main:app --reload
 
 ## Run with Docker
 
+Prebuilt image from GitHub Container Registry (published by CI on each push):
+
+```bash
+docker run --rm -p 8000:8000 ghcr.io/zlen2024/montage-clipper:latest
+# open http://localhost:8000
+```
+
+(The package may be private at first — make it public in the repo's Packages settings,
+or `docker login ghcr.io`. See `HOSTING.md`.)
+
+Or build locally:
+
 ```bash
 docker compose up --build
 # open http://localhost:8000
