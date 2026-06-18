@@ -63,8 +63,11 @@
         '<span class="warn">AI mode needs a WebGPU browser (recent Chrome/Edge). ' +
         "Falling back to free audio mode.</span>";
     } else {
-      $("aiNote").textContent =
-        "AI mode loads a small vision model into your browser (one-time download) and scores frames on your GPU.";
+      $("aiNote").innerHTML =
+        "AI mode asks a vision model — running on your GPU — about every couple of " +
+        "seconds of video and clips only the moments it identifies as kills/combat. " +
+        '<span class="warn">Heads-up: ~2&nbsp;sec of waiting per second of video</span> ' +
+        "(model loads once, then is cached).";
     }
 
     function selectedTier() {
@@ -112,11 +115,18 @@
     }
 
     function humanStatus(s) {
+      const tier = selectedTier();
+      const detecting = tier === "ai"
+        ? "Sampling video for the AI to score…"
+        : "Finding loud moments…";
+      const extracting = tier === "ai"
+        ? "Preparing video…"
+        : "Extracting audio…";
       return {
         queued: "Queued…",
-        extracting: "Extracting audio…",
-        detecting: "Finding loud moments…",
-        awaiting_client_scoring: "Scoring scenes on your GPU…",
+        extracting,
+        detecting,
+        awaiting_client_scoring: "Scoring each moment on your GPU…",
         rendering: "Rendering montage…",
         done: "Done!",
         failed: "Failed",

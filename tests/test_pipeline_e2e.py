@@ -9,8 +9,15 @@ import pytest
 from app.config import Settings
 from app.core.jobs import Job, JobStatus, JobStore, Tier
 from app.core.pipeline import run as run_pipeline
-from app.llm.fake_scorer import FakeScorer
+from app.llm.interface import SceneScore, SceneScorer, SegmentContext
 from app.media.probe import ffmpeg_available, probe_duration
+
+
+class _ScripedScorer(SceneScorer):
+    """Scores YES for every even-indexed frame, NO for odd. Deterministic."""
+
+    def score_segment(self, frames, context: SegmentContext) -> SceneScore | None:
+        return SceneScore(epicness=0.9 if context.index % 2 == 0 else 0.1, reason="stub")
 
 
 def _run(settings: Settings, source: Path, tier: Tier, **kwargs) -> Job:
@@ -35,8 +42,9 @@ def test_free_tier_end_to_end(settings: Settings, sample_video: Path):
 
 
 def test_ai_tier_end_to_end_with_stub(settings: Settings, sample_video: Path):
-    # FakeScorer skips the browser wait and scores frames deterministically.
-    job = _run(settings, sample_video, Tier.AI, override_scorer=FakeScorer())
+    # The stub scores half the sampled frames as YES — the AI-first flow should
+    # turn each YES into a clip and produce a montage.
+    job = _run(settings, sample_video, Tier.AI, override_scorer=_ScripedScorer())
 
     assert job.status == JobStatus.DONE, job.error
     montage = settings.outputs_dir / "testjob" / "montage.mp4"

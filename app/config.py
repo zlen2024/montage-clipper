@@ -43,13 +43,21 @@ class Settings(BaseSettings):
     # Small vision-language model run client-side; answers "is this combat?" per
     # highlight frame. 256M is fast; SmolVLM-500M-Instruct is more accurate.
     vlm_model_id: str = "HuggingFaceTB/SmolVLM-256M-Instruct"
-    frame_fps: float = 1.0             # frames sampled per second within a segment
+    frame_fps: float = 1.0             # frames sampled per second within a segment (legacy)
     frame_scale_width: int = 512       # downscale long edge to control client cost
-    max_frames_per_segment: int = 6
-    client_scoring_timeout: float = 300.0  # wait this long for browser scores, else audio-only
-    weight_audio: float = 0.3          # blend weight for normalized loudness
-    weight_ai: float = 0.7             # blend weight for AI epicness
-    min_epicness: float = 0.15         # drop candidates the VLM scores below this
+    max_frames_per_segment: int = 6    # (legacy)
+    client_scoring_timeout: float = 600.0  # wait this long for browser scores, else fail
+    weight_audio: float = 0.3          # blend weight for normalized loudness (legacy)
+    weight_ai: float = 0.7             # blend weight for AI epicness (legacy)
+    min_epicness: float = 0.15         # drop candidates the VLM scores below this (legacy)
+
+    # --- AI-first scoring (the new algorithm) ---
+    # The AI tier samples the whole video at this cadence and asks the VLM
+    # whether each frame contains a kill / active combat. Lower period =
+    # finer-grained but slower; widened automatically for long videos.
+    ai_sample_period_s: float = 2.0    # ask the model about one frame every N seconds
+    ai_max_frames: int = 400           # safety cap; period auto-widens for long videos
+    ai_kill_threshold: float = 0.5     # frames scored below this are skipped
 
     # --- Free-tier usage cap ---
     free_daily_limit: int = 5

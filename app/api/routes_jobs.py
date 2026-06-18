@@ -16,8 +16,8 @@ from fastapi import (
 from fastapi.responses import FileResponse
 
 from app.api.schemas import (
+    AIFrame,
     FramesManifest,
-    FrameSegment,
     JobStatusResponse,
     ScoreSubmission,
     UploadResponse,
@@ -117,29 +117,21 @@ def frames_manifest(
     if job.status != JobStatus.AWAITING_CLIENT_SCORING:
         raise HTTPException(status_code=409, detail="Job is not awaiting client scoring.")
 
-    segments = [
-        FrameSegment(
-            index=i,
-            start=seg.start,
-            end=seg.end,
-            frame_urls=[
-                f"/jobs/{job_id}/frames/{i}/{n}.jpg"
-                for n in range(1, job.frame_counts[i] + 1)
-            ],
-        )
-        for i, seg in enumerate(job.segments)
+    frames = [
+        AIFrame(index=i, timestamp=t, url=f"/jobs/{job_id}/frames/{i}.jpg")
+        for i, t in enumerate(job.ai_frame_times)
     ]
-    return FramesManifest(job_id=job_id, model_id=settings.vlm_model_id, segments=segments)
+    return FramesManifest(job_id=job_id, model_id=settings.vlm_model_id, frames=frames)
 
 
-@router.get("/jobs/{job_id}/frames/{seg}/{n}.jpg")
+@router.get("/jobs/{job_id}/frames/{index}.jpg")
 def frame_image(
     job_id: str,
-    seg: int,
-    n: int,
+    index: int,
     settings: Settings = Depends(get_settings),
 ) -> FileResponse:
-    path = settings.work_dir / job_id / f"seg_{seg:03d}" / f"frame_{n:03d}.jpg"
+    # AI-first frames live in work/{job_id}/kf/kf_NNNNN.jpg (1-indexed by ffmpeg).
+    path = settings.work_dir / job_id / "kf" / f"kf_{index + 1:05d}.jpg"
     if not path.exists():
         raise HTTPException(status_code=404, detail="Frame not found.")
     return FileResponse(path, media_type="image/jpeg")

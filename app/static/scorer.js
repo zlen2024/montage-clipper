@@ -1,15 +1,13 @@
-// Browser-side highlight scoring with a real vision-language model (WebGPU).
+// Browser-side kill detection with a vision-language model (WebGPU).
 //
-// Unlike CLIP (which only measures image–text similarity), SmolVLM actually
-// understands a screenshot and answers arbitrary questions about it. We ask it
-// a single yes/no question per highlight — "is this active combat?" — and
-// convert the answer to a 0..1 epicness score. The server then re-ranks
-// candidates by combining this with the audio loudness.
+// The server samples one frame every N seconds across the WHOLE video and
+// pauses. This module loads SmolVLM into the user's GPU and asks the model,
+// for each frame, a single yes/no question: "is there active combat or a kill
+// happening?" YES becomes a high epicness score, NO a low one. The server
+// then clips a window around every YES.
 //
-// To keep it fast we only score ONE frame per audio-detected segment (the
-// middle one, which is usually the climax) rather than every sampled frame.
-//
-// Runs entirely on the user's GPU. No cloud inference cost.
+// We score each frame independently. The audio loudness path is the Free tier
+// only — the AI tier lets the model decide every moment.
 
 import {
   AutoProcessor,
@@ -37,7 +35,7 @@ async function loadModel(modelId, onStatus) {
     if (p.status === "progress" && p.file) {
       onStatus(`Downloading model: ${p.file} (${Math.round(p.progress || 0)}%)`);
     } else if (p.status === "ready") {
-      onStatus("Model ready — scoring highlights…");
+      onStatus("Model ready — scoring video…");
     }
   };
 
@@ -86,44 +84,40 @@ function parseYesNo(text) {
   const t = String(text).toLowerCase().trim();
   if (t.startsWith("yes")) return 0.9;
   if (t.startsWith("no")) return 0.1;
-  // Sometimes the model hedges — "There is..." / "It appears..." — fall back to
-  // a substring check and return null if we genuinely can't tell.
   if (/\byes\b/.test(t)) return 0.7;
   if (/\bno\b/.test(t)) return 0.2;
   return null;
 }
 
 /**
- * Score every segment in a frames manifest by asking the VLM one yes/no
- * question about its middle frame.
+ * Score every frame in the manifest. Each frame represents one timestamp in
+ * the source video; the server decides what to do with the score map.
  *
- * @returns {Promise<Object<number, number>>} map of segment index -> epicness 0..1
+ * @returns {Promise<Object<number, number>>} map of frame index -> epicness 0..1
  */
 export async function scoreJob(manifest, { onStatus = () => {} } = {}) {
   const scores = {};
-  const segments = manifest.segments || [];
+  const frames = manifest.frames || [];
+  let yesCount = 0;
 
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    if (!seg.frame_urls || seg.frame_urls.length === 0) continue;
-
-    // The middle frame is usually the climax — sufficient signal at ~1/Nth the cost.
-    const mid = Math.floor(seg.frame_urls.length / 2);
-    const url = new URL(seg.frame_urls[mid], location.origin).href;
-
-    onStatus(`Asking the model about highlight ${i + 1} of ${segments.length}…`);
+  for (let i = 0; i < frames.length; i++) {
+    const f = frames[i];
+    const url = new URL(f.url, location.origin).href;
+    onStatus(
+      `Asking the model: moment ${i + 1} of ${frames.length} ` +
+      `(t=${f.timestamp.toFixed(1)}s) — ${yesCount} kill${yesCount === 1 ? "" : "s"} so far`,
+    );
     try {
       const answer = await askYesNo(manifest.model_id, url, onStatus);
       const score = parseYesNo(answer);
       if (score !== null) {
-        scores[i] = score;
-        console.log(`segment ${i}: "${answer}" -> ${score}`);
-      } else {
-        console.log(`segment ${i}: unparseable answer "${answer}"`);
+        scores[f.index] = score;
+        if (score >= 0.5) yesCount++;
       }
     } catch (err) {
-      console.warn(`Frame scoring failed for segment ${i}:`, err);
+      console.warn(`Frame scoring failed at index ${f.index}:`, err);
     }
   }
+  onStatus(`Done — ${yesCount} kill moment${yesCount === 1 ? "" : "s"} found.`);
   return scores;
 }

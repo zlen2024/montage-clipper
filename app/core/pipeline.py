@@ -1,7 +1,15 @@
-"""Job orchestrator: detect -> (optional AI refine) -> render, driving job status.
+"""Job orchestrator: detect -> render, driving job status.
 
-This is the unit of work scheduled per upload. Keeping it a single function with a
-clean signature is what makes the documented Redis/RQ upgrade a drop-in later.
+Two algorithms behind one entry point:
+
+* **Free tier** — audio-loudness detection only. The loudest moments become
+  highlights.
+* **AI tier** — the VLM is the *primary* decision-maker. We sample the whole
+  video at a fixed cadence and ask the model, frame by frame, whether there is
+  a kill / active combat. Each YES becomes a highlight.
+
+Keeping this a single function with a clean signature is what makes the
+documented Redis/RQ upgrade a drop-in later.
 """
 from __future__ import annotations
 
@@ -11,11 +19,10 @@ from pathlib import Path
 from app.config import Settings
 from app.core.jobs import Job, JobStatus, JobStore, Tier
 from app.core.segment import Segment
-from app.detect import audio_loudness, scene_scoring
-from app.llm.client_scorer import ClientSubmittedScorer
-from app.llm.interface import SceneScorer
+from app.detect import ai_first, audio_loudness
+from app.llm.interface import SceneScorer, SegmentContext
 from app.media import ffmpeg_io
-from app.media.probe import has_audio_stream
+from app.media.probe import has_audio_stream, probe_duration
 
 
 def run(
@@ -38,25 +45,13 @@ def run(
     work = settings.work_dir / job_id
     try:
         store.set_status(job_id, JobStatus.EXTRACTING, 10)
-        if not has_audio_stream(source):
-            raise RuntimeError(
-                "This video has no audio track. Highlight detection listens for the "
-                "loudest moments, so it needs a recording with game or mic audio."
-            )
-        candidates = audio_loudness.detect(source, work, settings)
-        store.set_status(job_id, JobStatus.DETECTING, 40)
-        if not candidates:
-            raise RuntimeError(
-                "No highlights detected — the audio may be too quiet or uniform."
-            )
-
         if job.tier == Tier.AI:
-            segments = _refine_with_ai(job, source, candidates, work, store, settings, override_scorer)
+            segments = _run_ai_first(job, source, work, store, settings, override_scorer)
         else:
-            segments = audio_loudness.select_and_cap(candidates, settings)
+            segments = _run_free(source, work, settings)
 
         if not segments:
-            raise RuntimeError("No segments survived selection.")
+            raise RuntimeError("No highlights found in this video.")
 
         store.set_status(job_id, JobStatus.RENDERING, 80)
         out_path = settings.outputs_dir / job_id / "montage.mp4"
@@ -69,58 +64,83 @@ def run(
         _cleanup_work(work)
 
 
-def _refine_with_ai(
+def _run_free(source: Path, work: Path, settings: Settings) -> list[Segment]:
+    """Audio-loudness algorithm: extract audio, peak-pick, merge, cap."""
+    if not has_audio_stream(source):
+        raise RuntimeError(
+            "This video has no audio track. The free mode finds highlights by "
+            "listening for the loudest moments — try the AI mode instead, or "
+            "use a recording with game/mic audio."
+        )
+    candidates = audio_loudness.detect(source, work, settings)
+    if not candidates:
+        raise RuntimeError(
+            "No loud moments detected — the audio may be too quiet or uniform. "
+            "Try AI mode for a content-based pass."
+        )
+    return audio_loudness.select_and_cap(candidates, settings)
+
+
+def _run_ai_first(
     job: Job,
     source: Path,
-    candidates: list[Segment],
     work: Path,
     store: JobStore,
     settings: Settings,
     override_scorer: SceneScorer | None,
 ) -> list[Segment]:
-    """Sample frames, obtain scores (browser or injected), re-rank, and cap."""
-    frames_per_segment = _sample_all_frames(job, source, candidates, work, settings)
+    """Ask the VLM about every Nth second of the video; clip the YES moments."""
+    duration = probe_duration(source)
+    if duration <= 0:
+        raise RuntimeError("Could not read the video's duration.")
 
+    # 1. Sample the whole video at a fixed cadence.
+    store.set_status(job.id, JobStatus.DETECTING, 20)
+    samples, _ = ai_first.sample_uniform(source, work, duration, settings)
+    if not samples:
+        raise RuntimeError("Could not sample frames from this video.")
+    job.ai_frame_times = [t for t, _ in samples]
+
+    # 2. Get a score per frame (browser-side, or test stub).
     if override_scorer is not None:
-        scorer: SceneScorer = override_scorer
+        scores = _score_with_stub(override_scorer, job.id, samples)
     else:
-        # Hand off to the browser: frames are on disk, expose them and wait.
-        store.set_status(job.id, JobStatus.AWAITING_CLIENT_SCORING, 60)
-        scores = store.wait_for_scores(job.id, settings.client_scoring_timeout)
+        store.set_status(job.id, JobStatus.AWAITING_CLIENT_SCORING, 35)
+        client_scores = store.wait_for_scores(job.id, settings.client_scoring_timeout)
         current = store.get(job.id)
         if current is not None and current.status == JobStatus.FAILED:
             return []
-        if not scores:
-            # Timed out or no scores submitted — degrade to audio-only ranking.
-            return audio_loudness.select_and_cap(candidates, settings)
-        scorer = ClientSubmittedScorer(scores)
+        if not client_scores:
+            raise RuntimeError(
+                "AI scoring didn't finish in time. Try a shorter clip, or use Free mode."
+            )
+        scores = client_scores
 
-    refined = scene_scoring.refine(candidates, frames_per_segment, scorer, job.id, settings)
-    return audio_loudness.select_and_cap(refined, settings)
-
-
-def _sample_all_frames(
-    job: Job, source: Path, candidates: list[Segment], work: Path, settings: Settings
-) -> list[list[bytes]]:
-    """Sample frames for every candidate; record counts so the API can build URLs."""
-    frames_per_segment: list[list[bytes]] = []
-    frame_counts: list[int] = []
-    for i, seg in enumerate(candidates):
-        paths = ffmpeg_io.sample_frames(
-            source,
-            work / f"seg_{i:03d}",
-            seg.start,
-            seg.duration,
-            settings.frame_fps,
-            settings.frame_scale_width,
-            settings.max_frames_per_segment,
+    # 3. Build a clip around each YES frame, then merge + cap.
+    store.set_status(job.id, JobStatus.RENDERING, 70)
+    raw_segs = ai_first.scores_to_segments(samples, scores, settings, duration)
+    if not raw_segs:
+        raise RuntimeError(
+            "The AI didn't find any kill / combat moments. Try a different clip, "
+            "lower AI_KILL_THRESHOLD, or use Free mode."
         )
-        frame_counts.append(len(paths))
-        frames_per_segment.append([p.read_bytes() for p in paths])
+    merged = audio_loudness.merge_segments(raw_segs, settings)
+    return audio_loudness.select_and_cap(merged, settings)
 
-    job.segments = candidates
-    job.frame_counts = frame_counts
-    return frames_per_segment
+
+def _score_with_stub(
+    scorer: SceneScorer,
+    job_id: str,
+    samples: list[tuple[float, Path]],
+) -> dict[int, float]:
+    """Run an injected scorer over each sampled frame (used by tests)."""
+    out: dict[int, float] = {}
+    for i, (t, path) in enumerate(samples):
+        ctx = SegmentContext(job_id, i, Segment(t, t, 0.0, 0.0))
+        result = scorer.score_segment([path.read_bytes()], ctx)
+        if result is not None:
+            out[i] = result.epicness
+    return out
 
 
 def _cleanup_work(work: Path) -> None:

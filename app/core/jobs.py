@@ -48,7 +48,8 @@ class Job:
 
     # Runtime-only (not persisted): present while an AI job awaits browser scores.
     segments: list[Segment] = field(default_factory=list)
-    frame_counts: list[int] = field(default_factory=list)
+    frame_counts: list[int] = field(default_factory=list)  # legacy: per-segment frame count
+    ai_frame_times: list[float] = field(default_factory=list)  # AI-first: timestamp per frame
 
     def public_dict(self) -> dict:
         return {

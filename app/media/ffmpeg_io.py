@@ -69,6 +69,31 @@ def sample_frames(
     return sorted(out_dir.glob("frame_*.jpg"))
 
 
+def sample_at_cadence(
+    source: Path,
+    out_dir: Path,
+    period_s: float,
+    scale_width: int,
+    max_frames: int,
+) -> list[Path]:
+    """Sample one frame every `period_s` seconds across the whole video.
+
+    Frame N corresponds to source timestamp ``N * period_s``. Used by the AI
+    tier to ask the VLM about each second-or-so of gameplay.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pattern = out_dir / "kf_%05d.jpg"
+    _run([
+        _ffmpeg(), "-y",
+        "-i", str(source),
+        "-vf", f"fps=1/{period_s:.4f},scale={scale_width}:-1",
+        "-frames:v", str(max_frames),
+        "-q:v", "5",
+        str(pattern),
+    ])
+    return sorted(out_dir.glob("kf_*.jpg"))
+
+
 def cut_clip(source: Path, out_clip: Path, start: float, duration: float) -> Path:
     """Cut a single clip, re-encoding for clean keyframe-aligned boundaries."""
     out_clip.parent.mkdir(parents=True, exist_ok=True)

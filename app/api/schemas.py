@@ -21,19 +21,20 @@ class JobStatusResponse(BaseModel):
     output_ready: bool
 
 
-class FrameSegment(BaseModel):
+class AIFrame(BaseModel):
+    """One frame the browser must score (AI-first tier)."""
+
     index: int
-    start: float
-    end: float
-    frame_urls: list[str]
+    timestamp: float  # source video time in seconds
+    url: str
 
 
 class FramesManifest(BaseModel):
     job_id: str
     model_id: str = Field(description="Hugging Face model id the browser should load")
-    segments: list[FrameSegment]
+    frames: list[AIFrame]
 
 
 class ScoreSubmission(BaseModel):
-    # Keys are segment indices as strings (JSON object keys); values are epicness 0..1.
+    # Keys are frame indices as strings (JSON object keys); values are 0..1.
     scores: dict[str, float]
