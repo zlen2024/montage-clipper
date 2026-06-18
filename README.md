@@ -91,3 +91,10 @@ MVP. Job processing uses FastAPI background tasks + an in-process store with a J
 sidecar; the store and queue are kept behind small interfaces so they can move to
 Redis + RQ workers without touching the pipeline. Revenue (ads + VIP/credits) and
 real auth/payments are future work — the credit gating is stubbed with clean seams.
+
+## Train your own detector
+
+The built-in browser model is generic. To train a model specialized for *your* game's
+kills and plug it into the AI tier, see [`training/`](training/README.md) — an
+end-to-end Colab pipeline (data prep → train → export to ONNX → push to Hugging Face →
+use in the app).

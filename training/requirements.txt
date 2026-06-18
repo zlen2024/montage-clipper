@@ -1,0 +1,16 @@
+# For the training notebook and the local helper scripts.
+# On Google Colab, torch/torchvision are preinstalled — the notebook installs the rest.
+# For LOCAL use of the scripts:  pip install -r training/requirements.txt
+transformers>=4.44
+datasets>=2.20
+evaluate
+accelerate>=0.30
+optimum[exporters]>=1.20
+onnx
+onnxruntime
+scikit-learn
+matplotlib
+huggingface_hub>=0.24
+torch
+torchvision
+pillow
