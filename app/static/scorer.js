@@ -29,6 +29,23 @@ const PROMPT =
 
 let _processor = null;
 let _model = null;
+// Processors differ in argument order across model families: LFM2-VL is
+// (images, text); SmolVLM is (text, images). Detect once, then reuse.
+let _argOrder = null;
+
+async function runProcessor(processor, text, image) {
+  if (_argOrder === "text_img") return processor(text, [image]);
+  if (_argOrder === "img_text") return processor([image], text);
+  try {
+    const out = await processor([image], text); // LFM2-VL order
+    _argOrder = "img_text";
+    return out;
+  } catch (_) {
+    const out = await processor(text, [image]); // SmolVLM order
+    _argOrder = "text_img";
+    return out;
+  }
+}
 
 export function isWebGPUAvailable() {
   return typeof navigator !== "undefined" && "gpu" in navigator;
@@ -74,7 +91,7 @@ async function askYesNo(modelId, imageUrl, onStatus) {
     add_generation_prompt: true,
   });
 
-  const inputs = await processor(text, [image]);
+  const inputs = await runProcessor(processor, text, image);
   const generated_ids = await model.generate({
     ...inputs,
     max_new_tokens: 5,   // we only need YES / NO
