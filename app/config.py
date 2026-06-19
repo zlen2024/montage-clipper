@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     frame_fps: float = 1.0             # frames sampled per second within a segment (legacy)
     frame_scale_width: int = 512       # downscale long edge to control client cost
     max_frames_per_segment: int = 6    # (legacy)
-    client_scoring_timeout: float = 600.0  # wait this long for browser scores, else fail
+    client_scoring_timeout: float = 1800.0  # wait up to 30 min for browser scores
     weight_audio: float = 0.3          # blend weight for normalized loudness (legacy)
     weight_ai: float = 0.7             # blend weight for AI epicness (legacy)
     min_epicness: float = 0.15         # drop candidates the VLM scores below this (legacy)
@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     # whether each frame contains a kill / active combat. Lower period =
     # finer-grained but slower; widened automatically for long videos.
     ai_sample_period_s: float = 2.0    # ask the model about one frame every N seconds
-    ai_max_frames: int = 400           # safety cap; period auto-widens for long videos
+    ai_max_frames: int = 150           # cap total model calls; period auto-widens for long videos
     ai_kill_threshold: float = 0.5     # frames scored below this are skipped
 
     # --- Free-tier usage cap ---

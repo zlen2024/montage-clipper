@@ -61,7 +61,8 @@ def run(
         store.set_status(job_id, JobStatus.DONE, 100)
     except Exception as exc:  # noqa: BLE001 — record any failure on the job
         store.fail(job_id, str(exc))
-        _cleanup_work(work)
+        # Leave the work dir in place on failure: a browser may still be reading
+        # sampled frames. The hourly TTL sweeper reclaims it later.
 
 
 def _run_free(source: Path, work: Path, settings: Settings) -> list[Segment]:

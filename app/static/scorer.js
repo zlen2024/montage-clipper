@@ -73,7 +73,7 @@ async function askYesNo(modelId, imageUrl, onStatus) {
   const inputs = await processor(text, [image]);
   const generated_ids = await model.generate({
     ...inputs,
-    max_new_tokens: 12,
+    max_new_tokens: 5,   // we only need YES / NO
     do_sample: false,
   });
   const decoded = processor.batch_decode(

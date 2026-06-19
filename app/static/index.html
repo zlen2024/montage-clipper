@@ -64,10 +64,10 @@
         "Falling back to free audio mode.</span>";
     } else {
       $("aiNote").innerHTML =
-        "AI mode asks a vision model — running on your GPU — about every couple of " +
-        "seconds of video and clips only the moments it identifies as kills/combat. " +
-        '<span class="warn">Heads-up: ~2&nbsp;sec of waiting per second of video</span> ' +
-        "(model loads once, then is cached).";
+        "AI mode asks a vision model — running on your GPU — about moments across the " +
+        "video (up to ~150 frames) and clips only the ones it identifies as kills/combat. " +
+        '<span class="warn">Heads-up: this can take several minutes</span> ' +
+        "(model loads once, then is cached). Tip: try a short clip first.";
     }
 
     function selectedTier() {
