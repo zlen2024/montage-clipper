@@ -16,14 +16,14 @@ Two detection tiers (also the monetization seam):
   reacting) is almost always the loudest part. We compute a smoothed energy envelope,
   pick prominent peaks, pad/merge them into segments, cap the total length, and stitch
   with ffmpeg. Game-agnostic, CPU-only, free to run.
-- **Paid/credit — AI scene scoring, in your browser.** For each audio-detected
-  highlight, its middle frame is shown to a small open-weights **vision-language
-  model** (SmolVLM) running **client-side via WebGPU** — on the user's GPU, so
-  there's **no cloud inference cost**. The model is asked a direct yes/no question
-  ("is there active combat / a kill in this frame?") and the answer becomes the
-  epicness score. Only one frame per candidate is scored, so it stays fast. The
-  server only coordinates and renders. The `SceneScorer` seam leaves a cloud path
-  (e.g. Claude vision) as a future drop-in.
+- **Paid/credit — AI scene scoring, in your browser.** The video is sampled at a
+  fixed cadence and every frame is shown to an open-weights **vision-language model**
+  (default `LiquidAI/LFM2.5-VL-450M-ONNX`) running **client-side via WebGPU** — on the
+  user's GPU, so there's **no cloud inference cost**. The model is asked a direct
+  yes/no question ("is there a kill / active combat in this frame?") and each YES
+  becomes a clip. The model id is configurable via `VLM_MODEL_ID` (must be an ONNX /
+  Transformers.js-compatible repo). See [`training/`](training/README.md) to train
+  your own. The server only coordinates and renders.
 
 ## Requirements
 

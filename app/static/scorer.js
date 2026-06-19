@@ -1,17 +1,20 @@
 // Browser-side kill detection with a vision-language model (WebGPU).
 //
 // The server samples one frame every N seconds across the WHOLE video and
-// pauses. This module loads SmolVLM into the user's GPU and asks the model,
-// for each frame, a single yes/no question: "is there active combat or a kill
-// happening?" YES becomes a high epicness score, NO a low one. The server
-// then clips a window around every YES.
+// pauses. This module loads a vision-language model (default LFM2.5-VL-450M)
+// into the user's GPU and asks the model, for each frame, a single yes/no
+// question: "is there active combat or a kill happening?" YES becomes a high
+// epicness score, NO a low one. The server then clips a window around every YES.
+//
+// The model id comes from the server (VLM_MODEL_ID) and must be an ONNX /
+// Transformers.js-compatible repo (i.e. one with an onnx/ folder).
 //
 // We score each frame independently. The audio loudness path is the Free tier
 // only — the AI tier lets the model decide every moment.
 
 import {
   AutoProcessor,
-  AutoModelForVision2Seq,
+  AutoModelForImageTextToText,
   RawImage,
 } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3/dist/transformers.min.js";
 
@@ -41,7 +44,7 @@ async function loadModel(modelId, onStatus) {
 
   onStatus("Loading vision model in your browser (one-time download)…");
   _processor = await AutoProcessor.from_pretrained(modelId, { progress_callback });
-  _model = await AutoModelForVision2Seq.from_pretrained(modelId, {
+  _model = await AutoModelForImageTextToText.from_pretrained(modelId, {
     dtype: {
       embed_tokens: "fp16",
       vision_encoder: "fp16",
@@ -67,7 +70,7 @@ async function askYesNo(modelId, imageUrl, onStatus) {
     add_generation_prompt: true,
   });
 
-  const inputs = await processor(text, [image], { do_image_splitting: false });
+  const inputs = await processor(text, [image]);
   const generated_ids = await model.generate({
     ...inputs,
     max_new_tokens: 12,
