@@ -53,4 +53,6 @@ def healthz() -> JSONResponse:
 
 @app.get("/")
 def index() -> FileResponse:
-    return FileResponse(_STATIC_DIR / "index.html")
+    # no-store so the browser always re-fetches index.html (and thus the latest
+    # ?v= on the scorer import), preventing stale cached JS after an update.
+    return FileResponse(_STATIC_DIR / "index.html", headers={"Cache-Control": "no-store"})
