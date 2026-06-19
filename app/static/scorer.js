@@ -10,7 +10,8 @@
 // Transformers.js-compatible repo (i.e. one with an onnx/ folder).
 //
 // NOTE: LFM2.5-VL needs Transformers.js v4+ (v3 doesn't know its image
-// processor). v4's browser bundle lives at dist/transformers.web.js.
+// processor). Use v4's SELF-CONTAINED browser bundle: dist/transformers.min.js
+// (dist/transformers.web.js externalizes onnxruntime-web and needs a bundler).
 //
 // We score each frame independently. The audio loudness path is the Free tier
 // only — the AI tier lets the model decide every moment.
@@ -19,7 +20,7 @@ import {
   AutoProcessor,
   AutoModelForImageTextToText,
   RawImage,
-} from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0/dist/transformers.web.js";
+} from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0/dist/transformers.min.js";
 
 const PROMPT =
   "Look at this video game screenshot. Is there active combat happening right " +
